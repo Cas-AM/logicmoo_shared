@@ -1,7 +1,8 @@
 before_script:
  - sudo apt-add-repository ppa:swi-prolog/devel -y
  - sudo apt-get update -q
- - sudo apt-get install swi-prolog-nox
-travis_wait swi-prolog-nox
+ - sudo apt-get install swi-prolog-nox -y
+
 script: 
- - swipl -s t/each_call_cleanup.plt -g run_tests,halt -t 'halt(1)'
+ - swipl -s t/each_call_cleanup.plt -g run_tests,halt -t 'halt(1)' 
+travis_wait swipl
