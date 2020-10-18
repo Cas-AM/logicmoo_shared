@@ -25,6 +25,7 @@
           call_on_eof/1, 
           call_on_eof/2, 
           disable_in_file/1,
+          is_current_source_term/1,
           enable_in_file/1,
           is_file_enabling/1,  
           do_eof_actions/2,
@@ -69,6 +70,14 @@ Thread.
 
 :- set_module(class(library)).
 :- meta_predicate l_once(0).
+
+
+is_current_source_term(H):- notrace(is_current_source_term0(H)).
+is_current_source_term0((H:-B)):- !, (is_current_source_term1((H:-B))->true; (B==true -> is_current_source_term1(H))),!.
+is_current_source_term0((H)):- is_current_source_term1(H) -> true ; is_current_source_term1((H:-true)).
+is_current_source_term1(In):-
+    prolog_load_context('term',Term), % dmsg(Term=In),
+    (Term==In ; Term=@=In).
 
 
 :- system:reexport(library(debug),[debug/3]).
@@ -147,7 +156,7 @@ loading_source_file0(File):- t_l:pretend_loading_file(File).
 loading_source_file0(File):- prolog_load_context(source,File), prolog_load_context(file,File),!.
 loading_source_file0(File):- prolog_load_context(source,File), prolog_load_context(file,IFile),IFile\==File,!.
 loading_source_file0(File):- prolog_load_context(source,File). % maybe warn the above didnt catch it
-loading_source_file0(File):- prolog_load_context(file,File),break.
+loading_source_file0(File):- prolog_load_context(file,File),dumpST, break.
 loading_source_file0(File):- loading_file(File).
 loading_source_file0(File):- '$current_source_module'(Module),module_property(Module, file(File)).
 loading_source_file0(File):- 'context_module'(Module),module_property(Module, file(File)).
@@ -281,7 +290,8 @@ file_option_to_db(Option,DB):-
   loading_source_file(File),!,
   DBP=..[Option,File],
   DB=t_l:DBP,
-  ( predicate_property(DB,defined)->true;(thread_local(DB),volatile(DB))).
+  MFA=t_l:Option/1,
+  ( predicate_property(DB,defined)->true;(thread_local(MFA),volatile(MFA))).
 
 enable_in_file(Option):- file_option_to_db(Option,DB),assert_if_new(DB),set_prolog_flag_until_eof(Option,true).
 

@@ -96,15 +96,16 @@ old_get_predicate_attribute(MA, Name, Val) :-
                        */
 
 :- meta_predicate(totally_hide(:)).
-totally_hide(M:F/A):- cfunctor(P,F,A),!,totally_hide(M:P).
-totally_hide(MP):- strip_module(MP,CM,P),
-   (predicate_property(MP,imported_from(M));M=CM),
+
+totally_hide(CM:F/A):- cfunctor(P,F,A),!,
+   (predicate_property(CM:P,imported_from(M));M=CM),
    Pred=M:P,!,
    % (current_prolog_flag(runtime_debug,N), N>2) -> unhide(Pred) ; 
   '$with_unlocked_pred_local'(Pred,
-   (('$hide'(Pred),'old_set_predicate_attribute'(Pred, trace, 0),
+   (('$hide'(M:F/A),'old_set_predicate_attribute'(Pred, trace, 0),
    'old_set_predicate_attribute'(Pred, iso, 1),
    'old_set_predicate_attribute'(Pred, hide_childs, 1)))).
+totally_hide(MP):- strip_module(MP,CM,P),cfunctor(P,F,A),!,totally_hide(CM:F/A).
 
 set_pred_attrs(M:F/A,List):- cfunctor(P,F,A),!,set_pred_attrs(M:P,List).
 set_pred_attrs(MP,N=V):- !, strip_module(MP,CM,P),
@@ -454,8 +455,12 @@ mustvv(G):-must(G).
 
 dupe_term(E,EE):- duplicate_term(E,EE),E=EE.
 
-get_varname_list(VsOut):- nb_current('$variable_names',Vs),!,check_variable_names(Vs,VsOut),!.
+get_varname_list(VsOut,'$variable_names'):- nb_current('$variable_names',Vs),Vs\==[],!,check_variable_names(Vs,VsOut),!.
+get_varname_list(VsOut,'$old_variable_names'):- nb_current('$old_variable_names',Vs),Vs\==[],!,check_variable_names(Vs,VsOut),!.
+
+get_varname_list(VsOut):- get_varname_list(VsOut,_).
 get_varname_list([]).
+
 set_varname_list(VsIn):- check_variable_names(VsIn,Vs),
   b_setval('$variable_names',[]),
   dupe_term(Vs,VsD),
@@ -464,7 +469,7 @@ set_varname_list(VsIn):- check_variable_names(VsIn,Vs),
 add_var_to_env(NameS,Var):-
    ((is_list(NameS);string(NameS))->name(Name,NameS);NameS=Name),
    get_varname_list(VsIn),
-   add_var_to_list(Name,Var,VsIn,NewName,NewVar,NewVs),
+   add_var_to_list(Name,Var,VsIn,_NewName,NewVar,NewVs),
   % (NewName\==Name -> put_attr(Var, vn, NewName) ; true),
    (NewVar \==Var  -> put_attr(NewVar, vn, Name) ; true),
    (NewVs  \==VsIn -> put_variable_names(NewVs) ; true).
