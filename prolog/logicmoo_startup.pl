@@ -34,6 +34,64 @@
           init_why/2,
           run_pending_inits/0]).
 
+:- dynamic   user:file_search_path/2.
+:- multifile user:file_search_path/2.
+
+:- if( \+ current_predicate(add_absolute_search_folder/2)).
+
+
+name_to_files(Spec, Files) :-
+    name_to_files(Spec, Files, true).
+name_to_files(Spec, Files, Exists) :-
+    name_to_files_(Spec, Files, Exists),
+    (   Files==[]
+    ->  print_message(warning, format('No match: ~w', [Spec])),
+        fail
+    ;   true
+    ).
+
+
+%    working_directory(Dir,Dir);prolog_load_context(directory,Dir)
+
+spec_to_files(Spec,Files):-
+    findall(File,
+            (   absolute_file_name(Spec,File,[ access(exist),file_type(directory),file_errors(fail),solutions(all)])
+            ;   absolute_file_name(Spec,File,[ access(exist),file_errors(fail),solutions(all)])), Files).
+
+name_to_files_(Spec, Files, _) :-
+ % prolog_load_context(directory,Dir),
+    compound(Spec),
+    compound_name_arity(Spec, _Alias, 1), !,
+    spec_to_files(Spec,Files).
+name_to_files_(Spec, Files, Exists) :-
+    use_module(library(shell)),
+    shell:file_name_to_atom(Spec, S1),
+    expand_file_name(S1, Files0),
+    (   Exists==true,
+        Files0==[S1],
+        \+ access_file(S1, exist)
+    ->  print_message(warning,format('"~w" does not exist', [S1])),
+        fail
+    ;   Files=Files0
+    ).
+
+
+with_abs_paths(Pred1, Path):- is_list(Path),!,maplist(with_abs_paths(Pred1),Path).
+with_abs_paths(Pred1, Path):- 
+ ((atom(Path), is_absolute_file_name(Path)) -> 
+ (wdmsg(with_abs_paths(Pred1,Path)),
+ call(Pred1,Path));
+ (must((forall((
+     (name_to_files(Path, MatchesL)*-> member(Matches,MatchesL) ; Path = Matches),
+    spec_to_files(Matches,AbsPath)),
+    with_abs_paths(Pred1,AbsPath)))))).
+
+ain_file_search_path(Name,Path):- 
+ (user:file_search_path(Name,Path) -> true ; asserta(user:file_search_path(Name,Path))).
+
+add_absolute_search_folder(Name,Path):- with_abs_paths(ain_file_search_path(Name), Path).
+
+:- endif.
 
 :- if(false).
 :- system:use_module(library(apply)).
@@ -733,6 +791,7 @@ lmconfig:never_export_named(_,attr_unify_hook,2).
 lmconfig:never_export_named(_,attribute_goals,3).
 lmconfig:never_export_named(_,project_attributes,2).
 lmconfig:never_export_named(_,attr_portray_hook,2).
+lmconfig:never_export_named(_,isa,2).
 lmconfig:never_export_named(_,F,_):- atom_concat('$',_,F) ; atom_concat('__aux',_,F).
 
 lmconfig:never_reexport_named(_,goal_expansion,_).
@@ -796,10 +855,10 @@ all_source_file_predicates_are_transparent:-
 all_source_file_predicates_are_transparent(S,_LC):- 
  forall(source_file(M:H,S),
  (functor(H,F,A),
-  ignore(((\+ predicate_property(M:H,transparent), module_transparent(M:F/A), 
+  ignore(((\+ predicate_property(M:H,transparent), \+ lmconfig:never_export_named(M,F,A), module_transparent(M:F/A), 
   \+ atom_concat('__aux',_,F),debug(modules,'~N:- module_transparent((~q)/~q).~n',[F,A])))))).
 
-
+dont_mess_with(baseKB:isa/2).
 
 :- export(fixup_exports/0).
 
@@ -935,8 +994,8 @@ logicmoo_base_port(Base):- app_argv1(One),\+ is_list(One),
 % ==============================================
 % Easier to trace while access_level system
 % ==============================================
-:- '$hide'('$toplevel':restore_debug).
-:- '$hide'('$toplevel':save_debug).
+:- '$hide'('$toplevel':restore_debug/0).
+:- '$hide'('$toplevel':save_debug/0).
 %:- '$hide'('$toplevel':residue_vars/2).
 :- '$hide'('system':deterministic/1).
 :- '$hide'(toplevel_call/2).
@@ -1060,6 +1119,7 @@ pack_upgrade_soft(Pack) :-
         pack_install(Pack,
                      [ url(LatestURL),
                        upgrade(true),
+                       interactive(false),
                        pack(Pack)
                      ])
     ;   print_message(informational, pack(up_to_date(Pack)))
@@ -1075,6 +1135,34 @@ pack_upgrade_soft :- pack_upgrade_soft(pfc), pack_upgrade_soft(logicmoo_utils), 
 :- system:import(pack_upgrade_soft/0).
 
 
+fix_deps(Pack-_Why):-
+  pack_install(Pack,[interactive(false)]),
+  %pack_info(Pack),
+  !.
+
+correct_unsatisfied_dependencies:-
+  prolog_pack:unsatisfied_dependencies(List),reverse(List,R),maplist(fix_deps,R).
+correct_unsatisfied_dependencies:-!.
+
+ensure_this_pack_installed_correctly:-
+  % pack_upgrade(logicmoo_utils),
+  % pack_install('https://github.com/TeamSPoon/predicate_streams.git',[silent(true),git(true),interactive(false)]),
+  pack_install(predicate_streams,[interactive(false)]),
+  pack_install(gvar_syntax,[interactive(false)]),
+  pack_install(dictoo,[interactive(false)]),
+  pack_list_installed,
+  correct_unsatisfied_dependencies,
+  !.
+
+ensure_this_pack_installed:- exists_source(library(debuggery/first)),!.
+ensure_this_pack_installed:- 
+  prolog_load_context(directory,Here),
+  absolute_file_name('../../',PackDir,[relative_to(Here),file_type(directory)]),
+  attach_packs(PackDir),
+  exists_source(library(debuggery/first)),!,
+  ensure_this_pack_installed_correctly.
+
+:- ensure_this_pack_installed.
 
 % :- pack_list_installed.
 
@@ -1138,6 +1226,9 @@ pack_upgrade_soft :- pack_upgrade_soft(pfc), pack_upgrade_soft(logicmoo_utils), 
 :- system:reexport(library(logicmoo/call_reorder)).
 :- system:reexport(library(logicmoo/nb_set_term)).
 :- system:reexport(library(logicmoo/pretty_clauses)).
+
+:- system:reexport(library(logicmoo/dcg_meta)).
+:- system:reexport(library(logicmoo/util_bb_frame)).
 
 %=======================================
 %= REGISTER FOR INIT EVENTS
