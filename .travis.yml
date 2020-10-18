@@ -1,3 +1,11 @@
+services:
+  - docker
+
+before_install:
+docker run -it swipl
+FROM swipl
+COPY . /app
+CMD ["swipl", "/app/start.pl"]
 
 before_script:
  - sudo apt-add-repository ppa:swi-prolog/devel -y
